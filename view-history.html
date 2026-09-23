@@ -1,0 +1,260 @@
+<fsWrite> <path>view-history.html</path> <content><!DOCTYPE html> <html lang="ru"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0"> <title>Просмотр истории местоположений</title> <style> * { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; } .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); } h1 { color: #333; margin-bottom: 20px; font-size: 24px; } h2 { color: #555; margin-top: 30px; margin-bottom: 15px; font-size: 20px; } .settings { background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #ffc107; } .settings h3 { margin-bottom: 15px; color: #856404; } .form-group { margin-bottom: 15px; } .form-group label { display: block; margin-bottom: 5px; font-weight: bold; color: #555; } .form-group input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; } .form-group .hint { font-size: 12px; color: #666; margin-top: 5px; } .button-group { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; } button { background: #007bff; color: white; border: none; padding: 12px 24px; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background 0.3s; } button:hover { background: #0056b3; } button.success { background: #28a745; } button.success:hover { background: #218838; } button.danger { background: #dc3545; } button.danger:hover { background: #c82333; } #status { padding: 15px; border-radius: 5px; margin: 20px 0; font-size: 14px; display: none; } #status.show { display: block; } .status-success { background: #d4edda; color: #155724; border-left: 4px solid #28a745; } .status-error { background: #f8d7da; color: #721c24; border-left: 4px solid #dc3545; } .status-loading { background: #fff3cd; color: #856404; border-left: 4px solid #ffc107; } .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; } .stat-box { background: #e9ecef; padding: 15px; border-radius: 5px; text-align: center; } .stat-label { font-size: 12px; color: #666; text-transform: uppercase; margin-bottom: 5px; } .stat-value { font-size: 24px; font-weight: bold; color: #333; } .map-container { margin: 20px 0; border: 2px solid #ddd; border-radius: 8px; overflow: hidden; background: #f9f9f9; } .map-container iframe { width: 100%; height: 450px; border: none; display: block; } .history-list { margin-top: 20px; } .history-item { background: #f9f9f9; padding: 15px; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid #007bff; transition: transform 0.2s; } .history-item:hover { transform: translateX(5px); background: #f0f0f0; } .history-time { font-weight: bold; color: #007bff; font-size: 14px; margin-bottom: 5px; } .history-coords { color: #333; font-size: 16px; font-family: 'Courier New', monospace; margin-bottom: 5px; } .history-accuracy { color: #666; font-size: 12px; } .empty-state { text-align: center; padding: 40px; color: #999; font-style: italic; } .auto-refresh { background: #d1ecf1; padding: 10px; border-radius: 5px; margin: 15px 0; border-left: 4px solid #17a2b8; display: flex; align-items: center; gap: 10px; } .auto-refresh input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; } .auto-refresh label { cursor: pointer; font-weight: bold; color: #0c5460; } .auto-refresh .timer { margin-left: auto; font-weight: bold; color: #0c5460; } @media (max-width: 768px) { body { padding: 10px; } .container { padding: 15px; } .stats { grid-template-columns: 1fr; } .button-group { flex-direction: column; } button { width: 100%; } } </style> </head> <body> <div class="container"> <h1>📊 Просмотр истории местоположений</h1>
+
+    <div class="settings">
+        <h3>⚙️ Настройки GitHub</h3>
+        <div class="form-group">
+            <label>GitHub Username:</label>
+            <input type="text" id="githubUser" placeholder="stes1978">
+            <div class="hint">Твоё имя пользователя на GitHub (без @)</div>
+        </div>
+        
+        <div class="form-group">
+            <label>Repository Name:</label>
+            <input type="text" id="githubRepo" placeholder="location">
+            <div class="hint">Название репозитория (например, location)</div>
+        </div>
+        
+        <div class="form-group">
+            <label>Personal Access Token:</label>
+            <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxx">
+            <div class="hint">Токен с правами repo (создаётся в GitHub → Settings → Developer settings → Personal access tokens)</div>
+        </div>
+        
+        <div class="button-group">
+            <button onclick="saveSettings()" class="success">💾 Сохранить настройки</button>
+            <button onclick="loadHistory()">📥 Загрузить историю</button>
+            <button onclick="clearSettings()" class="danger">🗑 Очистить настройки</button>
+        </div>
+    </div>
+
+    <div id="status"></div>
+
+    <div class="auto-refresh">
+        <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()">
+        <label for="autoRefresh">Автообновление каждые 5 минут</label>
+        <div class="timer" id="refreshTimer"></div>
+    </div>
+
+    <div class="stats">
+        <div class="stat-box">
+            <div class="stat-label">Всего точек</div>
+            <div class="stat-value" id="totalPoints">0</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Последняя синхронизация</div>
+            <div class="stat-value" id="lastSync">-</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Время последней точки</div>
+            <div class="stat-value" id="lastPointTime">-</div>
+        </div>
+    </div>
+
+    <h2>🗺️ Последнее местоположение</h2>
+    <div class="map-container">
+        <iframe id="mapFrame" src="about:blank"></iframe>
+    </div>
+
+    <h2>📋 История перемещений</h2>
+    <div class="history-list" id="historyList">
+        <div class="empty-state">
+            Загрузите историю для просмотра данных
+        </div>
+    </div>
+</div>
+
+<script>
+    let history = [];
+    let autoRefreshInterval = null;
+    let countdownInterval = null;
+    let nextRefreshTime = null;
+
+    function loadSettings() {
+        const settings = localStorage.getItem('githubSettings');
+        if (settings) {
+            const s = JSON.parse(settings);
+            document.getElementById('githubUser').value = s.user || '';
+            document.getElementById('githubRepo').value = s.repo || '';
+            document.getElementById('githubToken').value = s.token || '';
+        }
+    }
+
+    function saveSettings() {
+        const settings = {
+            user: document.getElementById('githubUser').value.trim(),
+            repo: document.getElementById('githubRepo').value.trim(),
+            token: document.getElementById('githubToken').value.trim()
+        };
+        
+        if (!settings.user || !settings.repo || !settings.token) {
+            showStatus('Заполните все поля', 'error');
+            return;
+        }
+        
+        localStorage.setItem('githubSettings', JSON.stringify(settings));
+        showStatus('✓ Настройки сохранены', 'success');
+    }
+
+    function clearSettings() {
+        if (confirm('Удалить все сохранённые настройки?')) {
+            localStorage.removeItem('githubSettings');
+            document.getElementById('githubUser').value = '';
+            document.getElementById('githubRepo').value = '';
+            document.getElementById('githubToken').value = '';
+            showStatus('✓ Настройки удалены', 'success');
+        }
+    }
+
+    function showStatus(message, type) {
+        const status = document.getElementById('status');
+        status.textContent = message;
+        status.className = `status-${type} show`;
+        
+        if (type === 'success' || type === 'error') {
+            setTimeout(() => {
+                status.classList.remove('show');
+            }, 5000);
+        }
+    }
+
+    async function loadHistory() {
+        const user = document.getElementById('githubUser').value.trim();
+        const repo = document.getElementById('githubRepo').value.trim();
+        const token = document.getElementById('githubToken').value.trim();
+
+        if (!user || !repo || !token) {
+            showStatus('✗ Заполните все настройки', 'error');
+            return;
+        }
+
+        try {
+            showStatus('⏳ Загрузка данных с GitHub...', 'loading');
+
+            const url = `https://api.github.com/repos/${user}/${repo}/contents/location-history.json`;
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            });
+
+            if (!response.ok) {
+                if (response.status === 404) {
+                    showStatus('✗ Файл location-history.json не найден. Начните отслеживание на телефоне.', 'error');
+                } else if (response.status === 401) {
+                    showStatus('✗ Неверный токен. Проверьте Personal Access Token.', 'error');
+                } else {
+                    showStatus(`✗ Ошибка GitHub: ${response.status}`, 'error');
+                }
+                return;
+            }
+
+            const data = await response.json();
+            const content = decodeURIComponent(escape(atob(data.content)));
+            const historyData = JSON.parse(content);
+
+            history = historyData.locations || [];
+            
+            document.getElementById('totalPoints').textContent = historyData.totalPoints || history.length;
+            
+            if (historyData.lastSync) {
+                const syncDate = new Date(historyData.lastSync);
+                document.getElementById('lastSync').textContent = syncDate.toLocaleString('ru-RU');
+            }
+
+            if (history.length > 0) {
+                const lastPoint = history[0];
+                document.getElementById('lastPointTime').textContent = lastPoint.displayTime;
+                updateMap(lastPoint.lat, lastPoint.lng);
+            }
+
+            updateHistoryDisplay();
+            showStatus(`✓ Загружено ${history.length} точек`, 'success');
+
+        } catch (error) {
+            showStatus(`✗ Ошибка: ${error.message}`, 'error');
+            console.error('Load error:', error);
+        }
+    }
+
+    function updateMap(lat, lng) {
+        const delta = 0.015;
+        const bbox = `${lng-delta},${lat-delta},${lng+delta},${lat+delta}`;
+        const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+        document.getElementById('mapFrame').src = mapUrl;
+    }
+
+    function updateHistoryDisplay() {
+        const historyList = document.getElementById('historyList');
+
+        if (history.length === 0) {
+            historyList.innerHTML = '<div class="empty-state">История пуста</div>';
+            return;
+        }
+
+        historyList.innerHTML = history.map((point, index) => `
+            <div class="history-item">
+                <div class="history-time">${point.displayTime}</div>
+                <div class="history-coords">${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}</div>
+                <div class="history-accuracy">Точность: ${Math.round(point.accuracy)} м</div>
+            </div>
+        `).join('');
+    }
+
+    function toggleAutoRefresh() {
+        const checkbox = document.getElementById('autoRefresh');
+        
+        if (checkbox.checked) {
+            startAutoRefresh();
+        } else {
+            stopAutoRefresh();
+        }
+    }
+
+    function startAutoRefresh() {
+        loadHistory();
+        nextRefreshTime = Date.now() + 5 * 60 * 1000;
+        
+        autoRefreshInterval = setInterval(() => {
+            loadHistory();
+            nextRefreshTime = Date.now() + 5 * 60 * 1000;
+        }, 5 * 60 * 1000);
+
+        countdownInterval = setInterval(updateCountdown, 1000);
+        updateCountdown();
+    }
+
+    function stopAutoRefresh() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+        }
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+        document.getElementById('refreshTimer').textContent = '';
+    }
+
+    function updateCountdown() {
+        if (!nextRefreshTime) return;
+        
+        const remaining = nextRefreshTime - Date.now();
+        if (remaining <= 0) {
+            document.getElementById('refreshTimer').textContent = 'Обновление...';
+            return;
+        }
+        
+        const minutes = Math.floor(remaining / 60000);
+        const seconds = Math.floor((remaining % 60000) / 1000);
+        document.getElementById('refreshTimer').textContent = 
+            `Следующее: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    window.onload = function() {
+        loadSettings();
+    };
+</script>
+
+
+</body> </html> </content> </fsWrite>
