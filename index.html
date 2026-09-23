@@ -536,3 +536,1513 @@
 </html>
 </content>
 </fsWrite>
+
+
+
+**1. Карта в окне** - да, можно встроить через iframe OpenStreetMap
+**2. Работа без сотовой** - геолокация работает через Wi-Fi, GPS, IP-адрес. Сотовая не обязательна
+**3. GitHub** - да, возможно через GitHub API каждые 5 минут
+
+<fsWrite>
+<path>location-github.html</path>
+<content><!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Трекер с GitHub</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; margin-top: 0; font-size: 24px; }
+        h2 { color: #555; font-size: 18px; margin-top: 20px; }
+        .info {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .label { font-weight: bold; color: #666; font-size: 14px; }
+        .value { color: #333; font-size: 18px; margin-top: 5px; }
+        #status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .loading { background: #fff3cd; color: #856404; }
+        .tracking { background: #cce5ff; color: #004085; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px 5px 5px 0;
+        }
+        button:hover { background: #0056b3; }
+        button.danger { background: #dc3545; }
+        button.danger:hover { background: #c82333; }
+        button.success { background: #28a745; }
+        button.success:hover { background: #218838; }
+        .history-item {
+            background: #f9f9f9;
+            padding: 12px;
+            border-radius: 5px;
+            margin: 8px 0;
+            border-left: 4px solid #007bff;
+        }
+        .history-time {
+            font-weight: bold;
+            color: #007bff;
+            font-size: 14px;
+        }
+        .history-coords {
+            color: #333;
+            font-size: 16px;
+            margin-top: 5px;
+        }
+        .history-accuracy {
+            color: #666;
+            font-size: 12px;
+            margin-top: 3px;
+        }
+        .empty-history {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-style: italic;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .settings {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #ffc107;
+        }
+        .settings label {
+            display: block;
+            margin: 10px 0 5px;
+            font-weight: bold;
+            color: #666;
+        }
+        .settings input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .settings .hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .map-container {
+            margin: 20px 0;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .map-container iframe {
+            width: 100%;
+            height: 400px;
+            border: none;
+        }
+        .sync-status {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📍 Трекер с GitHub</h1>
+        
+        <div class="settings">
+            <h3>⚙️ Настройки GitHub</h3>
+            <label>GitHub Username:</label>
+            <input type="text" id="githubUser" placeholder="твой_username">
+            
+            <label>Repository Name:</label>
+            <input type="text" id="githubRepo" placeholder="location-tracker">
+            
+            <label>Personal Access Token:</label>
+            <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxx">
+            <div class="hint">
+                Создай токен: GitHub → Settings → Developer settings → Personal access tokens → Generate new token (выбери repo)
+            </div>
+            
+            <button onclick="saveSettings()" class="success">💾 Сохранить настройки</button>
+            <button onclick="testConnection()">🔗 Проверить соединение</button>
+        </div>
+
+        <div id="status" class="loading">
+            Настрой GitHub и нажми "Начать отслеживание"
+        </div>
+
+        <div class="sync-status" id="syncStatus">
+            Синхронизация: не активна
+        </div>
+
+        <div class="info">
+            <div class="label">Текущие координаты:</div>
+            <div class="value" id="currentCoords">-</div>
+        </div>
+
+        <div class="info">
+            <div class="label">Точность:</div>
+            <div class="value" id="currentAccuracy">-</div>
+        </div>
+
+        <div class="info">
+            <div class="label">Последнее обновление:</div>
+            <div class="value" id="lastUpdate">-</div>
+        </div>
+
+        <button onclick="startTracking()">🚀 Начать отслеживание</button>
+        <button onclick="stopTracking()" class="danger">⏹ Остановить</button>
+        <button onclick="syncNow()">🔄 Синхронизировать сейчас</button>
+        <button onclick="clearHistory()">🗑 Очистить историю</button>
+
+        <div class="stats">
+            <div>Точек в истории: <strong id="pointCount">0</strong></div>
+            <div>Время работы: <strong id="trackingTime">0:00</strong></div>
+            <div>Синхронизаций: <strong id="syncCount">0</strong></div>
+        </div>
+
+        <h2>🗺️ Карта</h2>
+        <div class="map-container">
+            <iframe id="mapFrame" src="https://www.openstreetmap.org/export/embed.html?bbox=37.5,55.7,37.7,55.8&layer=mapnik"></iframe>
+        </div>
+
+        <h2>📋 История перемещений</h2>
+        <div id="historyList">
+            <div class="empty-history">История пуста. Начните отслеживание.</div>
+        </div>
+    </div>
+
+    <script>
+        let watchId = null;
+        let history = [];
+        let startTime = null;
+        let timeInterval = null;
+        let syncInterval = null;
+        let syncCount = 0;
+        const SYNC_INTERVAL = 5 * 60 * 1000; // 5 минут
+        const MAX_POINTS = 1000;
+
+        function loadSettings() {
+            const settings = localStorage.getItem('githubSettings');
+            if (settings) {
+                const s = JSON.parse(settings);
+                document.getElementById('githubUser').value = s.user || '';
+                document.getElementById('githubRepo').value = s.repo || '';
+                document.getElementById('githubToken').value = s.token || '';
+            }
+        }
+
+        function saveSettings() {
+            const settings = {
+                user: document.getElementById('githubUser').value,
+                repo: document.getElementById('githubRepo').value,
+                token: document.getElementById('githubToken').value
+            };
+            localStorage.setItem('githubSettings', JSON.stringify(settings));
+            updateStatus('✓ Настройки сохранены', 'success');
+        }
+
+        function getSettings() {
+            const settings = localStorage.getItem('githubSettings');
+            return settings ? JSON.parse(settings) : null;
+        }
+
+        function loadHistory() {
+            const saved = localStorage.getItem('locationHistory');
+            if (saved) {
+                history = JSON.parse(saved);
+                updateHistoryDisplay();
+            }
+        }
+
+        function saveHistory() {
+            localStorage.setItem('locationHistory', JSON.stringify(history));
+        }
+
+        function updateStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = type;
+        }
+
+        function updateSyncStatus(message) {
+            document.getElementById('syncStatus').textContent = 'Синхронизация: ' + message;
+        }
+
+        function updateCurrentPosition(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+            const time = new Date(position.timestamp);
+
+            document.getElementById('currentCoords').textContent = 
+                `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            document.getElementById('currentAccuracy').textContent = 
+                `${Math.round(accuracy)} м`;
+            document.getElementById('lastUpdate').textContent = 
+                time.toLocaleString('ru-RU');
+
+            updateMap(lat, lng);
+            addToHistory(lat, lng, accuracy, time);
+        }
+
+        function updateMap(lat, lng) {
+            const delta = 0.01;
+            const bbox = `${lng-delta},${lat-delta},${lng+delta},${lat+delta}`;
+            const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+            document.getElementById('mapFrame').src = mapUrl;
+        }
+
+        function addToHistory(lat, lng, accuracy, time) {
+            const point = {
+                lat: lat,
+                lng: lng,
+                accuracy: accuracy,
+                time: time.toISOString(),
+                displayTime: time.toLocaleString('ru-RU')
+            };
+
+            history.unshift(point);
+
+            if (history.length > MAX_POINTS) {
+                history = history.slice(0, MAX_POINTS);
+            }
+
+            saveHistory();
+            updateHistoryDisplay();
+        }
+
+        function updateHistoryDisplay() {
+            const historyList = document.getElementById('historyList');
+            document.getElementById('pointCount').textContent = history.length;
+
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="empty-history">История пуста. Начните отслеживание.</div>';
+                return;
+            }
+
+            const displayHistory = history.slice(0, 50);
+            historyList.innerHTML = displayHistory.map(point => `
+                <div class="history-item">
+                    <div class="history-time">${point.displayTime}</div>
+                    <div class="history-coords">${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}</div>
+                    <div class="history-accuracy">Точность: ${Math.round(point.accuracy)} м</div>
+                </div>
+            `).join('');
+
+            if (history.length > 50) {
+                historyList.innerHTML += `<div class="empty-history">Показаны последние 50 из ${history.length} точек</div>`;
+            }
+        }
+
+        function handleError(error) {
+            let message = '✗ Ошибка: ';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message += 'Доступ запрещён. Разрешите в настройках.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message += 'Местоположение недоступно.';
+                    break;
+                case error.TIMEOUT:
+                    message += 'Время ожидания истекло.';
+                    break;
+                default:
+                    message += error.message;
+            }
+            updateStatus(message, 'error');
+        }
+
+        async function syncToGitHub() {
+            const settings = getSettings();
+            if (!settings || !settings.user || !settings.repo || !settings.token) {
+                updateSyncStatus('настройки не указаны');
+                return;
+            }
+
+            if (history.length === 0) {
+                updateSyncStatus('нет данных для синхронизации');
+                return;
+            }
+
+            try {
+                updateSyncStatus('синхронизация...');
+
+                const url = `https://api.github.com/repos/${settings.user}/${settings.repo}/contents/location-history.json`;
+                
+                let sha = null;
+                try {
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `token ${settings.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        sha = data.sha;
+                    }
+                } catch (e) {
+                    // Файл не существует, это нормально
+                }
+
+                const content = btoa(unescape(encodeURIComponent(JSON.stringify({
+                    lastSync: new Date().toISOString(),
+                    totalPoints: history.length,
+                    locations: history
+                }, null, 2))));
+
+                const body = {
+                    message: `Update location history - ${new Date().toLocaleString('ru-RU')}`,
+                    content: content
+                };
+
+                if (sha) {
+                    body.sha = sha;
+                }
+
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${settings.token}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                if (response.ok) {
+                    syncCount++;
+                    document.getElementById('syncCount').textContent = syncCount;
+                    updateSyncStatus(`✓ успешно (${new Date().toLocaleTimeString('ru-RU')})`);
+                } else {
+                    const error = await response.text();
+                    updateSyncStatus(`✗ ошибка: ${response.status}`);
+                    console.error('GitHub API error:', error);
+                }
+            } catch (error) {
+                updateSyncStatus(`✗ ошибка сети: ${error.message}`);
+                console.error('Sync error:', error);
+            }
+        }
+
+        async function testConnection() {
+            const settings = getSettings();
+            if (!settings || !settings.user || !settings.repo || !settings.token) {
+                updateStatus('✗ Заполните все настройки', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('Проверка соединения...', 'loading');
+                const url = `https://api.github.com/repos/${settings.user}/${settings.repo}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `token ${settings.token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+
+                if (response.ok) {
+                    updateStatus('✓ Соединение успешно! Репозиторий найден.', 'success');
+                } else {
+                    updateStatus(`✗ Ошибка: ${response.status}. Проверьте настройки.`, 'error');
+                }
+            } catch (error) {
+                updateStatus(`✗ Ошибка сети: ${error.message}`, 'error');
+            }
+        }
+
+        function startTracking() {
+            if (!navigator.geolocation) {
+                updateStatus('✗ Геолокация не поддерживается', 'error');
+                return;
+            }
+
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+
+            startTime = new Date();
+            updateStatus('📡 Отслеживание активно...', 'tracking');
+
+            watchId = navigator.geolocation.watchPosition(
+                updateCurrentPosition,
+                handleError,
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+
+            timeInterval = setInterval(updateTrackingTime, 1000);
+            syncInterval = setInterval(syncToGitHub, SYNC_INTERVAL);
+            
+            updateSyncStatus(`автосинхронизация каждые 5 минут`);
+        }
+
+        function stopTracking() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+
+            if (timeInterval) {
+                clearInterval(timeInterval);
+                timeInterval = null;
+            }
+
+            if (syncInterval) {
+                clearInterval(syncInterval);
+                syncInterval = null;
+            }
+
+            startTime = null;
+            document.getElementById('trackingTime').textContent = '0:00';
+            updateStatus('⏹ Отслеживание остановлено', 'success');
+            updateSyncStatus('не активна');
+        }
+
+        function syncNow() {
+            syncToGitHub();
+        }
+
+        function updateTrackingTime() {
+            if (!startTime) return;
+
+            const elapsed = Math.floor((new Date() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('trackingTime').textContent = 
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function clearHistory() {
+            if (confirm('Очистить всю историю перемещений?')) {
+                history = [];
+                localStorage.removeItem('locationHistory');
+                updateHistoryDisplay();
+            }
+        }
+
+        window.onload = function() {
+            loadSettings();
+            loadHistory();
+        };
+    </script>
+</body>
+</html>
+</content>
+</fsWrite>
+
+
+
+**1. Карта в окне** - да, можно встроить через iframe OpenStreetMap
+**2. Работа без сотовой** - геолокация работает через Wi-Fi, GPS, IP-адрес. Сотовая не обязательна
+**3. GitHub** - да, возможно через GitHub API каждые 5 минут
+
+<fsWrite>
+<path>location-github.html</path>
+<content><!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Трекер с GitHub</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f0f0f0;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; margin-top: 0; font-size: 24px; }
+        h2 { color: #555; font-size: 18px; margin-top: 20px; }
+        .info {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .label { font-weight: bold; color: #666; font-size: 14px; }
+        .value { color: #333; font-size: 18px; margin-top: 5px; }
+        #status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .loading { background: #fff3cd; color: #856404; }
+        .tracking { background: #cce5ff; color: #004085; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px 5px 5px 0;
+        }
+        button:hover { background: #0056b3; }
+        button.danger { background: #dc3545; }
+        button.danger:hover { background: #c82333; }
+        button.success { background: #28a745; }
+        button.success:hover { background: #218838; }
+        .history-item {
+            background: #f9f9f9;
+            padding: 12px;
+            border-radius: 5px;
+            margin: 8px 0;
+            border-left: 4px solid #007bff;
+        }
+        .history-time {
+            font-weight: bold;
+            color: #007bff;
+            font-size: 14px;
+        }
+        .history-coords {
+            color: #333;
+            font-size: 16px;
+            margin-top: 5px;
+        }
+        .history-accuracy {
+            color: #666;
+            font-size: 12px;
+            margin-top: 3px;
+        }
+        .empty-history {
+            text-align: center;
+            color: #999;
+            padding: 20px;
+            font-style: italic;
+        }
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            background: #e9ecef;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        .settings {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #ffc107;
+        }
+        .settings label {
+            display: block;
+            margin: 10px 0 5px;
+            font-weight: bold;
+            color: #666;
+        }
+        .settings input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .settings .hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .map-container {
+            margin: 20px 0;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .map-container iframe {
+            width: 100%;
+            height: 400px;
+            border: none;
+        }
+        .sync-status {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📍 Трекер с GitHub</h1>
+        
+        <div class="settings">
+            <h3>⚙️ Настройки GitHub</h3>
+            <label>GitHub Username:</label>
+            <input type="text" id="githubUser" placeholder="твой_username">
+            
+            <label>Repository Name:</label>
+            <input type="text" id="githubRepo" placeholder="location-tracker">
+            
+            <label>Personal Access Token:</label>
+            <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxx">
+            <div class="hint">
+                Создай токен: GitHub → Settings → Developer settings → Personal access tokens → Generate new token (выбери repo)
+            </div>
+            
+            <button onclick="saveSettings()" class="success">💾 Сохранить настройки</button>
+            <button onclick="testConnection()">🔗 Проверить соединение</button>
+        </div>
+
+        <div id="status" class="loading">
+            Настрой GitHub и нажми "Начать отслеживание"
+        </div>
+
+        <div class="sync-status" id="syncStatus">
+            Синхронизация: не активна
+        </div>
+
+        <div class="info">
+            <div class="label">Текущие координаты:</div>
+            <div class="value" id="currentCoords">-</div>
+        </div>
+
+        <div class="info">
+            <div class="label">Точность:</div>
+            <div class="value" id="currentAccuracy">-</div>
+        </div>
+
+        <div class="info">
+            <div class="label">Последнее обновление:</div>
+            <div class="value" id="lastUpdate">-</div>
+        </div>
+
+        <button onclick="startTracking()">🚀 Начать отслеживание</button>
+        <button onclick="stopTracking()" class="danger">⏹ Остановить</button>
+        <button onclick="syncNow()">🔄 Синхронизировать сейчас</button>
+        <button onclick="clearHistory()">🗑 Очистить историю</button>
+
+        <div class="stats">
+            <div>Точек в истории: <strong id="pointCount">0</strong></div>
+            <div>Время работы: <strong id="trackingTime">0:00</strong></div>
+            <div>Синхронизаций: <strong id="syncCount">0</strong></div>
+        </div>
+
+        <h2>🗺️ Карта</h2>
+        <div class="map-container">
+            <iframe id="mapFrame" src="https://www.openstreetmap.org/export/embed.html?bbox=37.5,55.7,37.7,55.8&layer=mapnik"></iframe>
+        </div>
+
+        <h2>📋 История перемещений</h2>
+        <div id="historyList">
+            <div class="empty-history">История пуста. Начните отслеживание.</div>
+        </div>
+    </div>
+
+    <script>
+        let watchId = null;
+        let history = [];
+        let startTime = null;
+        let timeInterval = null;
+        let syncInterval = null;
+        let syncCount = 0;
+        const SYNC_INTERVAL = 5 * 60 * 1000; // 5 минут
+        const MAX_POINTS = 1000;
+
+        function loadSettings() {
+            const settings = localStorage.getItem('githubSettings');
+            if (settings) {
+                const s = JSON.parse(settings);
+                document.getElementById('githubUser').value = s.user || '';
+                document.getElementById('githubRepo').value = s.repo || '';
+                document.getElementById('githubToken').value = s.token || '';
+            }
+        }
+
+        function saveSettings() {
+            const settings = {
+                user: document.getElementById('githubUser').value,
+                repo: document.getElementById('githubRepo').value,
+                token: document.getElementById('githubToken').value
+            };
+            localStorage.setItem('githubSettings', JSON.stringify(settings));
+            updateStatus('✓ Настройки сохранены', 'success');
+        }
+
+        function getSettings() {
+            const settings = localStorage.getItem('githubSettings');
+            return settings ? JSON.parse(settings) : null;
+        }
+
+        function loadHistory() {
+            const saved = localStorage.getItem('locationHistory');
+            if (saved) {
+                history = JSON.parse(saved);
+                updateHistoryDisplay();
+            }
+        }
+
+        function saveHistory() {
+            localStorage.setItem('locationHistory', JSON.stringify(history));
+        }
+
+        function updateStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = type;
+        }
+
+        function updateSyncStatus(message) {
+            document.getElementById('syncStatus').textContent = 'Синхронизация: ' + message;
+        }
+
+        function updateCurrentPosition(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+            const time = new Date(position.timestamp);
+
+            document.getElementById('currentCoords').textContent = 
+                `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            document.getElementById('currentAccuracy').textContent = 
+                `${Math.round(accuracy)} м`;
+            document.getElementById('lastUpdate').textContent = 
+                time.toLocaleString('ru-RU');
+
+            updateMap(lat, lng);
+            addToHistory(lat, lng, accuracy, time);
+        }
+
+        function updateMap(lat, lng) {
+            const delta = 0.01;
+            const bbox = `${lng-delta},${lat-delta},${lng+delta},${lat+delta}`;
+            const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+            document.getElementById('mapFrame').src = mapUrl;
+        }
+
+        function addToHistory(lat, lng, accuracy, time) {
+            const point = {
+                lat: lat,
+                lng: lng,
+                accuracy: accuracy,
+                time: time.toISOString(),
+                displayTime: time.toLocaleString('ru-RU')
+            };
+
+            history.unshift(point);
+
+            if (history.length > MAX_POINTS) {
+                history = history.slice(0, MAX_POINTS);
+            }
+
+            saveHistory();
+            updateHistoryDisplay();
+        }
+
+        function updateHistoryDisplay() {
+            const historyList = document.getElementById('historyList');
+            document.getElementById('pointCount').textContent = history.length;
+
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="empty-history">История пуста. Начните отслеживание.</div>';
+                return;
+            }
+
+            const displayHistory = history.slice(0, 50);
+            historyList.innerHTML = displayHistory.map(point => `
+                <div class="history-item">
+                    <div class="history-time">${point.displayTime}</div>
+                    <div class="history-coords">${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}</div>
+                    <div class="history-accuracy">Точность: ${Math.round(point.accuracy)} м</div>
+                </div>
+            `).join('');
+
+            if (history.length > 50) {
+                historyList.innerHTML += `<div class="empty-history">Показаны последние 50 из ${history.length} точек</div>`;
+            }
+        }
+
+        function handleError(error) {
+            let message = '✗ Ошибка: ';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message += 'Доступ запрещён. Разрешите в настройках.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message += 'Местоположение недоступно.';
+                    break;
+                case error.TIMEOUT:
+                    message += 'Время ожидания истекло.';
+                    break;
+                default:
+                    message += error.message;
+            }
+            updateStatus(message, 'error');
+        }
+
+        async function syncToGitHub() {
+            const settings = getSettings();
+            if (!settings || !settings.user || !settings.repo || !settings.token) {
+                updateSyncStatus('настройки не указаны');
+                return;
+            }
+
+            if (history.length === 0) {
+                updateSyncStatus('нет данных для синхронизации');
+                return;
+            }
+
+            try {
+                updateSyncStatus('синхронизация...');
+
+                const url = `https://api.github.com/repos/${settings.user}/${settings.repo}/contents/location-history.json`;
+                
+                let sha = null;
+                try {
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `token ${settings.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        sha = data.sha;
+                    }
+                } catch (e) {
+                    // Файл не существует, это нормально
+                }
+
+                const content = btoa(unescape(encodeURIComponent(JSON.stringify({
+                    lastSync: new Date().toISOString(),
+                    totalPoints: history.length,
+                    locations: history
+                }, null, 2))));
+
+                const body = {
+                    message: `Update location history - ${new Date().toLocaleString('ru-RU')}`,
+                    content: content
+                };
+
+                if (sha) {
+                    body.sha = sha;
+                }
+
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${settings.token}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                if (response.ok) {
+                    syncCount++;
+                    document.getElementById('syncCount').textContent = syncCount;
+                    updateSyncStatus(`✓ успешно (${new Date().toLocaleTimeString('ru-RU')})`);
+                } else {
+                    const error = await response.text();
+                    updateSyncStatus(`✗ ошибка: ${response.status}`);
+                    console.error('GitHub API error:', error);
+                }
+            } catch (error) {
+                updateSyncStatus(`✗ ошибка сети: ${error.message}`);
+                console.error('Sync error:', error);
+            }
+        }
+
+        async function testConnection() {
+            const settings = getSettings();
+            if (!settings || !settings.user || !settings.repo || !settings.token) {
+                updateStatus('✗ Заполните все настройки', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('Проверка соединения...', 'loading');
+                const url = `https://api.github.com/repos/${settings.user}/${settings.repo}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `token ${settings.token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+
+                if (response.ok) {
+                    updateStatus('✓ Соединение успешно! Репозиторий найден.', 'success');
+                } else {
+                    updateStatus(`✗ Ошибка: ${response.status}. Проверьте настройки.`, 'error');
+                }
+            } catch (error) {
+                updateStatus(`✗ Ошибка сети: ${error.message}`, 'error');
+            }
+        }
+
+        function startTracking() {
+            if (!navigator.geolocation) {
+                updateStatus('✗ Геолокация не поддерживается', 'error');
+                return;
+            }
+
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+
+            startTime = new Date();
+            updateStatus('📡 Отслеживание активно...', 'tracking');
+
+            watchId = navigator.geolocation.watchPosition(
+                updateCurrentPosition,
+                handleError,
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+
+            timeInterval = setInterval(updateTrackingTime, 1000);
+            syncInterval = setInterval(syncToGitHub, SYNC_INTERVAL);
+            
+            updateSyncStatus(`автосинхронизация каждые 5 минут`);
+        }
+
+        function stopTracking() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+
+            if (timeInterval) {
+                clearInterval(timeInterval);
+                timeInterval = null;
+            }
+
+            if (syncInterval) {
+                clearInterval(syncInterval);
+                syncInterval = null;
+            }
+
+            startTime = null;
+            document.getElementById('trackingTime').textContent = '0:00';
+            updateStatus('⏹ Отслеживание остановлено', 'success');
+            updateSyncStatus('не активна');
+        }
+
+        function syncNow() {
+            syncToGitHub();
+        }
+
+        function updateTrackingTime() {
+            if (!startTime) return;
+
+            const elapsed = Math.floor((new Date() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('trackingTime').textContent = 
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function clearHistory() {
+            if (confirm('Очистить всю историю перемещений?')) {
+                history = [];
+                localStorage.removeItem('locationHistory');
+                updateHistoryDisplay();
+            }
+        }
+
+        window.onload = function() {
+            loadSettings();
+            loadHistory();
+        };
+    </script>
+</body>
+</html>
+</content>
+</fsWrite>
+
+        }
+        .settings label {
+            display: block;
+            margin: 10px 0 5px;
+            font-weight: bold;
+            color: #666;
+        }
+        .settings input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .settings .hint {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .map-container {
+            margin: 20px 0;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        .map-container iframe {
+            width: 100%;
+            height: 400px;
+            border: none;
+        }
+        .sync-status {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📍 Трекер с GitHub</h1>
+        
+        <div class="settings">
+            <h3>⚙️ Настройки GitHub</h3>
+            <label>GitHub Username:</label>
+            <input type="text" id="githubUser" placeholder="твой_username">
+            
+            <label>Repository Name:</label>
+            <input type="text" id="githubRepo" placeholder="location-tracker">
+            
+            <label>Personal Access Token:</label>
+            <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxx">
+            <div class="hint">
+                Создай токен: GitHub → Settings → Developer settings → Personal access tokens → Generate new token (выбери repo)
+            </div>
+            
+            <button onclick="saveSettings()" class="success">💾 Сохранить настройки</button>
+            <button onclick="testConnection()">🔗 Проверить соединение</button>
+        </div>
+
+        <div id="status" class="loading">
+            Настрой GitHub и нажми "Начать отслеживание"
+        </div>
+
+        <div class="sync-status" id="syncStatus">
+            Синхронизация: не активна
+        </div>
+
+        <div class="info">
+            <div class="label">Текущие координаты:</div>
+            <div class="value" id="currentCoords">-</div>
+        </div>
+
+        <div class="info">
+            <div class="label">Точность:</div>
+            <div class="value" id="currentAccuracy">-</div>
+        </div>
+
+        <div class="info">
+            <div class="label">Последнее обновление:</div>
+            <div class="value" id="lastUpdate">-</div>
+        </div>
+
+        <button onclick="startTracking()">🚀 Начать отслеживание</button>
+        <button onclick="stopTracking()" class="danger">⏹ Остановить</button>
+        <button onclick="syncNow()">🔄 Синхронизировать сейчас</button>
+        <button onclick="clearHistory()">🗑 Очистить историю</button>
+
+        <div class="stats">
+            <div>Точек в истории: <strong id="pointCount">0</strong></div>
+            <div>Время работы: <strong id="trackingTime">0:00</strong></div>
+            <div>Синхронизаций: <strong id="syncCount">0</strong></div>
+        </div>
+
+        <h2>🗺️ Карта</h2>
+        <div class="map-container">
+            <iframe id="mapFrame" src="https://www.openstreetmap.org/export/embed.html?bbox=37.5,55.7,37.7,55.8&layer=mapnik"></iframe>
+        </div>
+
+        <h2>📋 История перемещений</h2>
+        <div id="historyList">
+            <div class="empty-history">История пуста. Начните отслеживание.</div>
+        </div>
+    </div>
+
+    <script>
+        let watchId = null;
+        let history = [];
+        let startTime = null;
+        let timeInterval = null;
+        let syncInterval = null;
+        let syncCount = 0;
+        const SYNC_INTERVAL = 5 * 60 * 1000; // 5 минут
+        const MAX_POINTS = 1000;
+
+        function loadSettings() {
+            const settings = localStorage.getItem('githubSettings');
+            if (settings) {
+                const s = JSON.parse(settings);
+                document.getElementById('githubUser').value = s.user || '';
+                document.getElementById('githubRepo').value = s.repo || '';
+                document.getElementById('githubToken').value = s.token || '';
+            }
+        }
+
+        function saveSettings() {
+            const settings = {
+                user: document.getElementById('githubUser').value,
+                repo: document.getElementById('githubRepo').value,
+                token: document.getElementById('githubToken').value
+            };
+            localStorage.setItem('githubSettings', JSON.stringify(settings));
+            updateStatus('✓ Настройки сохранены', 'success');
+        }
+
+        function getSettings() {
+            const settings = localStorage.getItem('githubSettings');
+            return settings ? JSON.parse(settings) : null;
+        }
+
+        function loadHistory() {
+            const saved = localStorage.getItem('locationHistory');
+            if (saved) {
+                history = JSON.parse(saved);
+                updateHistoryDisplay();
+            }
+        }
+
+        function saveHistory() {
+            localStorage.setItem('locationHistory', JSON.stringify(history));
+        }
+
+        function updateStatus(message, type) {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = type;
+        }
+
+        function updateSyncStatus(message) {
+            document.getElementById('syncStatus').textContent = 'Синхронизация: ' + message;
+        }
+
+        function updateCurrentPosition(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+            const time = new Date(position.timestamp);
+
+            document.getElementById('currentCoords').textContent = 
+                `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            document.getElementById('currentAccuracy').textContent = 
+                `${Math.round(accuracy)} м`;
+            document.getElementById('lastUpdate').textContent = 
+                time.toLocaleString('ru-RU');
+
+            updateMap(lat, lng);
+            addToHistory(lat, lng, accuracy, time);
+        }
+
+        function updateMap(lat, lng) {
+            const delta = 0.01;
+            const bbox = `${lng-delta},${lat-delta},${lng+delta},${lat+delta}`;
+            const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat},${lng}`;
+            document.getElementById('mapFrame').src = mapUrl;
+        }
+
+        function addToHistory(lat, lng, accuracy, time) {
+            const point = {
+                lat: lat,
+                lng: lng,
+                accuracy: accuracy,
+                time: time.toISOString(),
+                displayTime: time.toLocaleString('ru-RU')
+            };
+
+            history.unshift(point);
+
+            if (history.length > MAX_POINTS) {
+                history = history.slice(0, MAX_POINTS);
+            }
+
+            saveHistory();
+            updateHistoryDisplay();
+        }
+
+        function updateHistoryDisplay() {
+            const historyList = document.getElementById('historyList');
+            document.getElementById('pointCount').textContent = history.length;
+
+            if (history.length === 0) {
+                historyList.innerHTML = '<div class="empty-history">История пуста. Начните отслеживание.</div>';
+                return;
+            }
+
+            const displayHistory = history.slice(0, 50);
+            historyList.innerHTML = displayHistory.map(point => `
+                <div class="history-item">
+                    <div class="history-time">${point.displayTime}</div>
+                    <div class="history-coords">${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}</div>
+                    <div class="history-accuracy">Точность: ${Math.round(point.accuracy)} м</div>
+                </div>
+            `).join('');
+
+            if (history.length > 50) {
+                historyList.innerHTML += `<div class="empty-history">Показаны последние 50 из ${history.length} точек</div>`;
+            }
+        }
+
+        function handleError(error) {
+            let message = '✗ Ошибка: ';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message += 'Доступ запрещён. Разрешите в настройках.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message += 'Местоположение недоступно.';
+                    break;
+                case error.TIMEOUT:
+                    message += 'Время ожидания истекло.';
+                    break;
+                default:
+                    message += error.message;
+            }
+            updateStatus(message, 'error');
+        }
+
+        async function syncToGitHub() {
+            const settings = getSettings();
+            if (!settings || !settings.user || !settings.repo || !settings.token) {
+                updateSyncStatus('настройки не указаны');
+                return;
+            }
+
+            if (history.length === 0) {
+                updateSyncStatus('нет данных для синхронизации');
+                return;
+            }
+
+            try {
+                updateSyncStatus('синхронизация...');
+
+                const url = `https://api.github.com/repos/${settings.user}/${settings.repo}/contents/location-history.json`;
+                
+                let sha = null;
+                try {
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `token ${settings.token}`,
+                            'Accept': 'application/vnd.github.v3+json'
+                        }
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        sha = data.sha;
+                    }
+                } catch (e) {
+                    // Файл не существует, это нормально
+                }
+
+                const content = btoa(unescape(encodeURIComponent(JSON.stringify({
+                    lastSync: new Date().toISOString(),
+                    totalPoints: history.length,
+                    locations: history
+                }, null, 2))));
+
+                const body = {
+                    message: `Update location history - ${new Date().toLocaleString('ru-RU')}`,
+                    content: content
+                };
+
+                if (sha) {
+                    body.sha = sha;
+                }
+
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `token ${settings.token}`,
+                        'Accept': 'application/vnd.github.v3+json',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                if (response.ok) {
+                    syncCount++;
+                    document.getElementById('syncCount').textContent = syncCount;
+                    updateSyncStatus(`✓ успешно (${new Date().toLocaleTimeString('ru-RU')})`);
+                } else {
+                    const error = await response.text();
+                    updateSyncStatus(`✗ ошибка: ${response.status}`);
+                    console.error('GitHub API error:', error);
+                }
+            } catch (error) {
+                updateSyncStatus(`✗ ошибка сети: ${error.message}`);
+                console.error('Sync error:', error);
+            }
+        }
+
+        async function testConnection() {
+            const settings = getSettings();
+            if (!settings || !settings.user || !settings.repo || !settings.token) {
+                updateStatus('✗ Заполните все настройки', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('Проверка соединения...', 'loading');
+                const url = `https://api.github.com/repos/${settings.user}/${settings.repo}`;
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `token ${settings.token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                });
+
+                if (response.ok) {
+                    updateStatus('✓ Соединение успешно! Репозиторий найден.', 'success');
+                } else {
+                    updateStatus(`✗ Ошибка: ${response.status}. Проверьте настройки.`, 'error');
+                }
+            } catch (error) {
+                updateStatus(`✗ Ошибка сети: ${error.message}`, 'error');
+            }
+        }
+
+        function startTracking() {
+            if (!navigator.geolocation) {
+                updateStatus('✗ Геолокация не поддерживается', 'error');
+                return;
+            }
+
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+
+            startTime = new Date();
+            updateStatus('📡 Отслеживание активно...', 'tracking');
+
+            watchId = navigator.geolocation.watchPosition(
+                updateCurrentPosition,
+                handleError,
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+
+            timeInterval = setInterval(updateTrackingTime, 1000);
+            syncInterval = setInterval(syncToGitHub, SYNC_INTERVAL);
+            
+            updateSyncStatus(`автосинхронизация каждые 5 минут`);
+        }
+
+        function stopTracking() {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+
+            if (timeInterval) {
+                clearInterval(timeInterval);
+                timeInterval = null;
+            }
+
+            if (syncInterval) {
+                clearInterval(syncInterval);
+                syncInterval = null;
+            }
+
+            startTime = null;
+            document.getElementById('trackingTime').textContent = '0:00';
+            updateStatus('⏹ Отслеживание остановлено', 'success');
+            updateSyncStatus('не активна');
+        }
+
+        function syncNow() {
+            syncToGitHub();
+        }
+
+        function updateTrackingTime() {
+            if (!startTime) return;
+
+            const elapsed = Math.floor((new Date() - startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+            document.getElementById('trackingTime').textContent = 
+                `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function clearHistory() {
+            if (confirm('Очистить всю историю перемещений?')) {
+                history = [];
+                localStorage.removeItem('locationHistory');
+                updateHistoryDisplay();
+            }
+        }
+
+        window.onload = function() {
+            loadSettings();
+            loadHistory();
+        };
+    </script>
+</body>
+</html>
+</content>
+</fsWrite>
